@@ -1,0 +1,45 @@
+
+FROM python:3.11-slim
+
+WORKDIR /app
+
+ENV DATABASE_URL=sqlite:stats-data/stats.db
+
+RUN apt-get update && apt-get install -y \
+    curl \
+    gnupg \
+    ca-certificates \
+    build-essential \
+    make \
+    g++ \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+    # Install DB mate for migration handling
+RUN curl -fsSL https://github.com/amacneil/dbmate/releases/download/v2.27.0/dbmate-linux-amd64 -o /usr/local/bin/dbmate \
+    && chmod +x /usr/local/bin/dbmate
+
+RUN node -v && npm -v
+
+# Install Node.js dependencies
+COPY package.json package-lock.json* ./
+RUN npm install
+RUN npm install --build-from-source @parcel/watcher
+
+# Run ESBuild to bundle Alpine
+# Decided not to watch changes since the alpine.js file shouldn't change often
+COPY ./assets/js/alpine ./assets/js/alpine
+RUN npm run build-alpine-dev
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+RUN mkdir -p stats-data
+
+RUN dbmate up
+
+EXPOSE 5000
+
+CMD ["python", "app.py"]
